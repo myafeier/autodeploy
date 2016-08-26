@@ -56,7 +56,7 @@ func defaultHandler(w http.ResponseWriter,r *http.Request)  {
 		w.WriteHeader(403)
 		return
 	}
-	if strings.Contains(string(body),"\"secret\": \"ohmygod\""){
+	if strings.Contains(string(body),"\"secret\": \"xxxxxx\""){
 		log.Println("true request!")
 	}
 
