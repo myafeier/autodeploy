@@ -51,10 +51,68 @@ func main() {
 	http.HandleFunc("/build", buildHandler)
 	http.HandleFunc("/copy",copyHandler)
 	http.HandleFunc("/assoc_www",assocWWWHandler)
+	http.HandleFunc("/meet",meetHandler)
+	http.HandleFunc("/meet_static",meetStaticHandler)
 	log.Println("Server Listening:" + *port)
 
 	log.Fatal(http.ListenAndServe(":"+*port, nil))
 }
+
+func meetStaticHandler(w http.ResponseWriter,r *http.Request){
+	err := r.ParseForm()
+	if err != nil {
+		log.Println(err)
+	}
+
+	if r.Method == "POST" {
+		log.Println("Method:POST")
+	} else if r.Method == "GET" {
+		log.Println("Method:GET")
+		log.Println(r.Form)
+	}
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(403)
+		return
+	}
+	if !strings.Contains(string(body), "\"secret\": \"ohmygod\"") {
+		w.WriteHeader(403)
+		return
+	}
+
+	execCommand("/bin/sh", []string{homePath + "/meet_static.sh" })
+
+}
+
+func meetHandler(w http.ResponseWriter,r *http.Request){
+	err := r.ParseForm()
+	if err != nil {
+		log.Println(err)
+	}
+
+	if r.Method == "POST" {
+		log.Println("Method:POST")
+	} else if r.Method == "GET" {
+		log.Println("Method:GET")
+		log.Println(r.Form)
+	}
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(403)
+		return
+	}
+	if !strings.Contains(string(body), "\"secret\": \"ohmygod\"") {
+		w.WriteHeader(403)
+		return
+	}
+
+	execCommand("/bin/sh", []string{homePath + "/meet.sh" })
+
+}
+
+
 func assocWWWHandler(w http.ResponseWriter,r *http.Request){
 	err := r.ParseForm()
 	if err != nil {
