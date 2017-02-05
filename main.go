@@ -1,202 +1,78 @@
 package main
 
 import (
+	"bufio"
+	"flag"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os/exec"
-	"strings"
-	//"os"
-	"bufio"
-	"flag"
+	"net/url"
 	"os"
+	"os/exec"
+	"regexp"
+	"strings"
 )
 
 var homePath string
-var buildArray []string
-var copyArray []string
-var buildName *string
-var copyName *string
+var urlRegex = regexp.MustCompile(`^[a-zA-Z\-_]{2,20}$`)
 
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-
+	var err error
 	homePath = os.Getenv("AUTODHOME")
 	if homePath == "" {
-		panic("You must set AUTODHOME!")
+		homePath, err = os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+
 	}
 
-	buildName = flag.String("b", "build.sh", "build script name")
-	copyName=flag.String("c","copy.sh","copy script name")
+	passwd := flag.String("pwd", "", "server passwd")
 	port := flag.String("port", "6000", "server port")
 	flag.Parse()
 
-	bytes, err := ioutil.ReadFile(homePath + "/" + *buildName)
-	if err != nil {
-		log.Fatal(err)
+	if *passwd == "" {
+		panic("passwd of server must be setup!")
 	}
 
-	text := string(bytes)
-	buildArray = strings.Split(text, "\n")
-	log.Printf("%V", buildArray)
-
-	cBytes,err:=ioutil.ReadFile(homePath+"/"+*copyName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	cText:=string(cBytes)
-	copyArray=strings.Split(cText,"\n")
-	log.Printf("%V", copyArray)
-
-	http.HandleFunc("/build", buildHandler)
-	http.HandleFunc("/copy",copyHandler)
-	http.HandleFunc("/assoc_www",assocWWWHandler)
-	http.HandleFunc("/meet",meetHandler)
-	http.HandleFunc("/meet_static",meetStaticHandler)
+	http.HandleFunc("/", deployHandler)
 	log.Println("Server Listening:" + *port)
 
 	log.Fatal(http.ListenAndServe(":"+*port, nil))
 }
 
-func meetStaticHandler(w http.ResponseWriter,r *http.Request){
-	err := r.ParseForm()
+func deployHandler(w http.ResponseWriter, r *http.Request) {
+	queryForm, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
-		log.Println(err)
+		panic(err)
 	}
 
-	if r.Method == "POST" {
-		log.Println("Method:POST")
-	} else if r.Method == "GET" {
-		log.Println("Method:GET")
-		log.Println(r.Form)
+	if len(queryForm["site"]) == 0 || len(queryForm["pwd"]) == 0 {
+		w.WriteHeader(404)
+		return
 	}
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		log.Println(err)
+	store := queryForm["site"][0]
+	pwd := queryForm["pwd"][0]
+	if pwd != "ohmygod" {
 		w.WriteHeader(403)
 		return
 	}
-	if !strings.Contains(string(body), "\"secret\": \"ohmygod\"") {
-		w.WriteHeader(403)
+	log.Printf("store = %+v\n", store)
+
+	if !urlRegex.MatchString(store) {
+
+		w.WriteHeader(400)
+		w.Write([]byte("regex didn`t match"))
 		return
 	}
 
-	execCommand("/bin/sh", []string{homePath + "/meet_static.sh" })
-
-}
-
-func meetHandler(w http.ResponseWriter,r *http.Request){
-	err := r.ParseForm()
+	_, err = ioutil.ReadFile(homePath + "/" + store + ".sh")
 	if err != nil {
-		log.Println(err)
+		panic(err)
 	}
 
-	if r.Method == "POST" {
-		log.Println("Method:POST")
-	} else if r.Method == "GET" {
-		log.Println("Method:GET")
-		log.Println(r.Form)
-	}
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(403)
-		return
-	}
-	if !strings.Contains(string(body), "\"secret\": \"ohmygod\"") {
-		w.WriteHeader(403)
-		return
-	}
-
-	execCommand("/bin/sh", []string{homePath + "/meet.sh" })
-
-}
-
-
-func assocWWWHandler(w http.ResponseWriter,r *http.Request){
-	err := r.ParseForm()
-	if err != nil {
-		log.Println(err)
-	}
-
-	if r.Method == "POST" {
-		log.Println("Method:POST")
-	} else if r.Method == "GET" {
-		log.Println("Method:GET")
-		log.Println(r.Form)
-	}
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(403)
-		return
-	}
-	if !strings.Contains(string(body), "\"secret\": \"sksheixks\"") {
-		w.WriteHeader(403)
-		return
-	}
-
-	execCommand("/bin/sh", []string{homePath + "/assoc_www.sh" })
-
-}
-func copyHandler(w http.ResponseWriter, r *http.Request){
-	err := r.ParseForm()
-	if err != nil {
-		log.Println(err)
-	}
-
-	if r.Method == "POST" {
-		log.Println("Method:POST")
-	} else if r.Method == "GET" {
-		log.Println("Method:GET")
-		log.Println(r.Form)
-	}
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(403)
-		return
-	}
-	if strings.Contains(string(body), "\"secret\": \"xxxxxx\"") {
-		log.Println("true request!")
-	}
-
-	execCommand("/bin/sh", []string{homePath + "/" + *copyName})
-}
-
-func buildHandler(w http.ResponseWriter, r *http.Request) {
-
-	err := r.ParseForm()
-	if err != nil {
-		log.Println(err)
-	}
-
-	if r.Method == "POST" {
-		log.Println("Method:POST")
-	} else if r.Method == "GET" {
-		log.Println("Method:GET")
-		log.Println(r.Form)
-	}
-
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(403)
-		return
-	}
-	if strings.Contains(string(body), "\"secret\": \"xxxxxx\"") {
-		log.Println("true request!")
-	}
-
-	execCommand("/bin/sh", []string{homePath + "/" + *buildName})
-
-	//for _,v:=range cmdArray{
-	//	cmd:=strings.Split(v," ")
-	//	command:=cmd[0]
-	//	params:=cmd[1:]
-	//	execCommand(command,params)
-	//}
-
+	execCommand("/bin/sh", []string{homePath + "/" + store + ".sh"})
 }
 
 func execCommand(command string, params []string) bool {
@@ -210,63 +86,29 @@ func execCommand(command string, params []string) bool {
 		}
 		return true
 	}
-
 	cmd := exec.Command(command, params...)
 	log.Println("cmd:", cmd.Args)
-
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Println(err)
 		return false
 	}
-	stderr, err := cmd.StderrPipe()
+	_, err = cmd.StderrPipe()
 	if err != nil {
 		log.Println(err)
 		return false
 	}
-
 	err = cmd.Start()
 	if err != nil {
 		log.Println("cmd start err:", err)
-		return false
+		panic(err)
 	}
-
 	in := bufio.NewScanner(stdout)
 	for in.Scan() {
 		log.Println(in.Text())
 	}
-	if err := in.Err(); err != nil {
+	if err = in.Err(); err != nil {
 		log.Println(err)
 	}
-
-	in2 := bufio.NewScanner(stderr)
-	for in2.Scan() {
-		log.Println(in2.Text())
-	}
-	if err := in2.Err(); err != nil {
-		log.Println(err)
-	}
-
-	//outReader, err := ioutil.ReadAll(stdout)
-	//errReader, err := ioutil.ReadAll(stderr)
-	//if err != nil {
-	//	log.Println("err:", err)
-	//	return false
-	//}
-	//
-	//if outReader != nil {
-	//	log.Println("Stdout:", string(outReader))
-	//}
-	//if errReader != nil {
-	//	log.Println("Stderr:", string(errReader))
-	//}
-
-	err = cmd.Wait()
-	if err != nil {
-		log.Println("stderr:", err)
-		return false
-	}
-
 	return true
-
 }
