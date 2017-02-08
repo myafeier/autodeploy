@@ -52,11 +52,6 @@ func main() {
 func deployHandler(w http.ResponseWriter, r *http.Request) {
 	syncx.Lock()
 	defer syncx.Unlock()
-	if Pid > 0 {
-		Pid = 0
-		cancel()
-		log.Println("Old pid canceled")
-	}
 
 	ctx, cancel = context.WithCancel(context.Background())
 	queryForm, err := url.ParseQuery(r.URL.RawQuery)
@@ -126,7 +121,7 @@ func execCommand(command string, params []string) bool {
 	*/
 	go func() {
 		Pid = cmd.Process.Pid
-		log.Println("Pid:", Pid)
+		log.Println("Running Pid:", Pid)
 		err = cmd.Wait()
 		if err != nil {
 			log.Println(err)
