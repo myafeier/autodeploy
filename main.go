@@ -11,10 +11,13 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 var homePath string
 var urlRegex = regexp.MustCompile(`^[a-zA-Z\-_]{2,20}$`)
+var password string
+var syncx sync.Mutex
 
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
@@ -29,12 +32,13 @@ func main() {
 	}
 
 	passwd := flag.String("pwd", "", "server passwd")
-	port := flag.String("port", "6000", "server port")
+	port := flag.String("port", "8100", "server port")
 	flag.Parse()
 
 	if *passwd == "" {
 		panic("passwd of server must be setup!")
 	}
+	password = *passwd
 
 	http.HandleFunc("/", deployHandler)
 	log.Println("Server Listening:" + *port)
@@ -43,18 +47,20 @@ func main() {
 }
 
 func deployHandler(w http.ResponseWriter, r *http.Request) {
+	syncx.Lock()
+	defer syncx.Unlock()
 	queryForm, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
 		panic(err)
 	}
-
+	log.Printf("Client :%v\n", r.RequestURI)
 	if len(queryForm["site"]) == 0 || len(queryForm["pwd"]) == 0 {
 		w.WriteHeader(404)
 		return
 	}
 	store := queryForm["site"][0]
 	pwd := queryForm["pwd"][0]
-	if pwd != "ohmygod" {
+	if pwd != password {
 		w.WriteHeader(403)
 		return
 	}
@@ -103,6 +109,23 @@ func execCommand(command string, params []string) bool {
 		log.Println("cmd start err:", err)
 		panic(err)
 	}
+	/*
+		go func (kill chan bool,cmd *exec.Cmd){
+			select {
+			case <-kill:
+				return
+			default:
+				cmd.Wait()
+			}
+
+		}(kill,cmd)
+	*/
+	err = cmd.Wait()
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
 	in := bufio.NewScanner(stdout)
 	for in.Scan() {
 		log.Println(in.Text())
