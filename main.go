@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bufio"
+	"context"
 	"flag"
 	"io/ioutil"
 	"log"
@@ -18,6 +18,9 @@ var homePath string
 var urlRegex = regexp.MustCompile(`^[a-zA-Z\-_]{2,20}$`)
 var password string
 var syncx sync.Mutex
+var Pid int
+var ctx context.Context
+var cancel context.CancelFunc
 
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
@@ -49,6 +52,13 @@ func main() {
 func deployHandler(w http.ResponseWriter, r *http.Request) {
 	syncx.Lock()
 	defer syncx.Unlock()
+	if Pid > 0 {
+		Pid = 0
+		cancel()
+		log.Println("Old pid canceled")
+	}
+
+	ctx, cancel = context.WithCancel(context.Background())
 	queryForm, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
 		panic(err)
@@ -79,6 +89,7 @@ func deployHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	execCommand("/bin/sh", []string{homePath + "/" + store + ".sh"})
+	log.Println("complete exec")
 }
 
 func execCommand(command string, params []string) bool {
@@ -92,23 +103,16 @@ func execCommand(command string, params []string) bool {
 		}
 		return true
 	}
-	cmd := exec.Command(command, params...)
+	cmd := exec.CommandContext(ctx, command, params...)
 	log.Println("cmd:", cmd.Args)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Println(err)
-		return false
-	}
-	_, err = cmd.StderrPipe()
-	if err != nil {
-		log.Println(err)
-		return false
-	}
+	cmd.Stdout = os.Stdout
+
 	err = cmd.Start()
 	if err != nil {
 		log.Println("cmd start err:", err)
 		panic(err)
 	}
+	log.Println("Cmd started")
 	/*
 		go func (kill chan bool,cmd *exec.Cmd){
 			select {
@@ -120,18 +124,16 @@ func execCommand(command string, params []string) bool {
 
 		}(kill,cmd)
 	*/
-	err = cmd.Wait()
-	if err != nil {
-		log.Println(err)
-		return false
-	}
+	go func() {
+		Pid = cmd.Process.Pid
+		log.Println("Pid:", Pid)
+		err = cmd.Wait()
+		if err != nil {
+			log.Println(err)
+		}
 
-	in := bufio.NewScanner(stdout)
-	for in.Scan() {
-		log.Println(in.Text())
-	}
-	if err = in.Err(); err != nil {
-		log.Println(err)
-	}
+		log.Println("wait completed")
+	}()
+
 	return true
 }
